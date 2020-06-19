@@ -33,7 +33,8 @@ class MultiHeadedScaledDotProductAttention(nn.Module):
         v = self.wv(v).view(v.size(0), v.size(1), self.n, self.d_v).transpose(1, 2)
         attn = torch.matmul(q, k.transpose(2, 3))
         if mask is not None:
-            attn = attn.masked_fill(mask.unsqueeze(1) == 0, -np.inf)
+            mask.unsqueeze(1).unsqueeze(-1)
+            attn = attn.masked_fill(mask==0, -np.inf)
         # actual attention
         attn = F.softmax(attn / self.temperature, dim=-1)
         attn_dot_v = torch.matmul(attn, v).transpose(1, 2).reshape(q.size(0), -1, self.d_v * self.n)
@@ -58,6 +59,21 @@ class PositionwiseFeedForward(nn.Module):
         output = self.dropout(output)
         output = self.norm(output + residual)
         return output
+
+
+# general transformer block
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model, d_hidden, n_head, d_k, d_v, dropout=0.1):
+        super().__init__()
+        self.slf_attn = MultiHeadedScaledDotProductAttention(n_head, d_model, d_k, d_v, dropout=dropout)
+        self.pos_ffnn = PositionwiseFeedForward(d_model, d_hidden, dropout=dropout)
+
+    def forward(self, input_seq, input_mask, return_attns=False):
+        slf_attn_output, self_attn = self.slf_attn(input_seq, input_seq, input_seq, mask=input_mask)
+        pos_ffnn_output = self.pos_ffnn(slf_attn_output)
+        if return_attns:
+            return pos_ffnn_output, self_attn
+        return pos_ffnn_output,
 
 
 # encoder layer
@@ -111,15 +127,16 @@ class PositionalEncoding(nn.Module):
 class Encoder(nn.Module):
     def __init__(self, n_src_vocab, d_model, d_hidden, n_head, d_k, d_v, n_position=100, n_layer=2, dropout=0.1):
         super().__init__()
-        self.embedding = nn.Embedding(n_src_vocab, d_model, padding_idx=0)
+        self.embedding = nn.Embedding(n_src_vocab, d_model)
         self.pos_enc = PositionalEncoding(d_model, n_position=n_position)
+        self.dropout = nn.Dropout(p=dropout)
         self.enc_layer_stack = nn.ModuleList([EncoderLayer(d_model, d_hidden, n_head, d_k, d_v, dropout=dropout)
                                               for _ in range(n_layer)])
 
     def forward(self, src_seq, src_mask=None, return_attns=False):
         enc_slf_attn_list = []
 
-        enc_output = self.pos_enc(self.embedding(src_seq))
+        enc_output = self.dropout(self.pos_enc(self.embedding(src_seq)))
         for enc_layer in self.enc_layer_stack:
             enc_output, enc_slf_attn = enc_layer(
                 enc_output, slf_attn_mask=src_mask)
@@ -132,15 +149,16 @@ class Encoder(nn.Module):
 class Decoder(nn.Module):
     def __init__(self, n_trg_vocab, d_model, d_hidden, n_head, d_k, d_v, n_position=100, n_layer=2, dropout=0.1):
         super().__init__()
-        self.embedding = nn.Embedding(n_trg_vocab, d_model, padding_idx=0)
+        self.embedding = nn.Embedding(n_trg_vocab, d_model)
         self.pos_enc = PositionalEncoding(d_model, n_position=n_position)
+        self.dropout = nn.Dropout(p=dropout)
         self.dec_layer_stack = nn.ModuleList([DecoderLayer(d_model, d_hidden, n_head, d_k, d_v, dropout=dropout)
                                               for _ in range(n_layer)])
 
     def forward(self, trg_seq, trg_mask, enc_output, src_mask, return_attns=False):
         dec_slf_attn_list, enc_dec_attn_list = [], []
 
-        dec_output = self.pos_enc(self.embedding(trg_seq))
+        dec_output = self.dropout(self.pos_enc(self.embedding(trg_seq)))
         for dec_layer in self.dec_layer_stack:
             dec_output, dec_slf_attn, enc_dec_attn = dec_layer(dec_output, enc_output,
                                                                slf_attn_mask=trg_mask, enc_dec_attn_mask=src_mask)
@@ -169,9 +187,12 @@ class Transformer(nn.Module):
             self.x_logit_scale = d_model ** -0.5
 
     def forward(self, src_seq, src_mask: torch.Tensor, trg_seq, trg_mask: torch.Tensor):
+        """
+        mask should be the same size as seq
+        """
         enc_output, *_ = self.encoder(src_seq, src_mask)
         dec_output, *_ = self.decoder(trg_seq, trg_mask, enc_output, src_mask)
-        transformer_output = F.softmax(self.trg_prj(dec_output) * self.x_logit_scale, dim=-1)
+        transformer_output = self.trg_prj(dec_output) * self.x_logit_scale
 
         return transformer_output
 
@@ -179,4 +200,4 @@ class Transformer(nn.Module):
 if __name__ == "__main__":
     model = Transformer(10, 10)
     x1, x2 = torch.tensor([[3, 8, 9, 2, 4, 2, 3]]), torch.tensor([[1, 5, 2, 7, 9, 7]])
-    print(torch.argmax(model(x1, None, x2, None), dim=-1))
+    print(torch.argmax(F.softmax(model(x1, None, x2, None), dim=-1), dim=-1))
