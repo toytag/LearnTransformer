@@ -98,7 +98,7 @@ class DecoderLayer(nn.Module):
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, n_position=100):
         super().__init__()
-        self.pos_table = self._sinusoid_encoding_table(n_position, d_model)
+        self.register_buffer('pos_table', self._sinusoid_encoding_table(n_position, d_model))
 
     def _sinusoid_encoding_table(self, n_position, d_model):
         sinusoid_table = np.array([pos / np.power(10000, np.arange(d_model) // 2 * 2 / d_model)
@@ -107,11 +107,6 @@ class PositionalEncoding(nn.Module):
         sinusoid_table[:, 1::2] = np.cos(sinusoid_table[:, 1::2])
         # (batch_size, n_position, d_model)
         return torch.tensor(sinusoid_table, dtype=torch.float).unsqueeze(0)
-
-    def to(*args, **kwargs):
-        self = super().to(*args, **kwargs)
-        self.pos_table = self.pos_table.to(*args, **kwargs)
-        return self
 
     def forward(self, x):
         return x + self.pos_table[:, :x.size(1)]
