@@ -14,8 +14,6 @@ class MultiHeadedScaledDotProductAttention(nn.Module):
         self.d_k = d_k
         self.d_v = d_v
         self.temperature = np.sqrt(d_k)
-        # --- maybe it can be learnable ---
-        # self.temperature = torch.tensor(np.sqrt(d_k), dtype=torch.float, requires_grad=True)
         self.wq = nn.Linear(d_model, d_k * n_head)
         self.wk = nn.Linear(d_model, d_k * n_head)
         self.wv = nn.Linear(d_model, d_v * n_head)
