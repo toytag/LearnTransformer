@@ -68,25 +68,16 @@ class TransformerBlock(nn.Module):
         self.slf_attn = MultiHeadedScaledDotProductAttention(n_head, d_model, d_k, d_v, dropout=dropout)
         self.pos_ffnn = PositionwiseFeedForward(d_model, d_hidden, dropout=dropout)
 
-    def forward(self, input_seq, input_mask, return_attns=False):
-        slf_attn_output, self_attn = self.slf_attn(input_seq, input_seq, input_seq, mask=input_mask)
+    def forward(self, input_seq, input_mask=None):
+        slf_attn_output, slf_attn = self.slf_attn(input_seq, input_seq, input_seq, mask=input_mask)
         pos_ffnn_output = self.pos_ffnn(slf_attn_output)
-        if return_attns:
-            return pos_ffnn_output, self_attn
-        return pos_ffnn_output,
+        return pos_ffnn_output, slf_attn
 
 
 # encoder layer
-class EncoderLayer(nn.Module):
+class EncoderLayer(TransformerBlock):
     def __init__(self, d_model, d_hidden, n_head, d_k, d_v, dropout=0.1):
-        super().__init__()
-        self.slf_attn = MultiHeadedScaledDotProductAttention(n_head, d_model, d_k, d_v, dropout=dropout)
-        self.pos_ffnn = PositionwiseFeedForward(d_model, d_hidden, dropout=dropout)
-
-    def forward(self, enc_input, slf_attn_mask=None):
-        slf_attn_output, slf_attn = self.slf_attn(enc_input, enc_input, enc_input, mask=slf_attn_mask)
-        enc_output = self.pos_ffnn(slf_attn_output)
-        return enc_output, slf_attn
+        super().__init__(d_model, d_hidden, n_head, d_k, d_v, dropout)
 
 
 # decoder layer
@@ -119,6 +110,11 @@ class PositionalEncoding(nn.Module):
         # (batch_size, n_position, d_model)
         return torch.tensor(sinusoid_table, dtype=torch.float).unsqueeze(0)
 
+    def to(*args, **kwargs):
+        self = super().to(*args, **kwargs)
+        self.pos_table = self.pos_table.to(*args, **kwargs)
+        return self
+
     def forward(self, x):
         return x + self.pos_table[:, :x.size(1)]
 
@@ -139,7 +135,7 @@ class Encoder(nn.Module):
         enc_output = self.dropout(self.pos_enc(self.embedding(src_seq)))
         for enc_layer in self.enc_layer_stack:
             enc_output, enc_slf_attn = enc_layer(
-                enc_output, slf_attn_mask=src_mask)
+                enc_output, input_mask=src_mask)
             enc_slf_attn_list += [enc_slf_attn] if return_attns else []
 
         return enc_output, enc_slf_attn_list
@@ -198,6 +194,8 @@ class Transformer(nn.Module):
 
 
 if __name__ == "__main__":
+    # test
     model = Transformer(10, 10)
-    x1, x2 = torch.tensor([[3, 8, 9, 2, 4, 2, 3]]), torch.tensor([[1, 5, 2, 7, 9, 7]])
-    print(torch.argmax(F.softmax(model(x1, None, x2, None), dim=-1), dim=-1))
+    with torch.no_grad():
+        x1, x2 = torch.tensor([[3, 8, 9, 2, 4, 2, 3]]), torch.tensor([[1, 5, 2, 7, 9, 7]])
+        print(torch.argmax(F.softmax(model(x1, None, x2, None), dim=-1), dim=-1))
