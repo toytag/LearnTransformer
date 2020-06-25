@@ -19,7 +19,7 @@ class MultiHeadedScaledDotProductAttention(nn.Module):
         self.wv = nn.Linear(d_model, d_v * n_head)
         self.output = nn.Linear(d_v * n_head, d_model)
         self.dropout = nn.Dropout(p=dropout)
-        self.norm = nn.LayerNorm(d_model)
+        self.norm = nn.LayerNorm(d_model, eps=1e-6)
 
     def forward(self, q, k, v, residual=None, mask=None):
         # default residual connection
@@ -49,7 +49,7 @@ class PositionwiseFeedForward(nn.Module):
         self.L1 = nn.Linear(d_model, d_hidden)
         self.L2 = nn.Linear(d_hidden, d_model)
         self.dropout = nn.Dropout(p=dropout)
-        self.norm = nn.LayerNorm(d_model)
+        self.norm = nn.LayerNorm(d_model, eps=1e-6)
 
     def forward(self, x):
         residual = x
