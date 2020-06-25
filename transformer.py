@@ -31,7 +31,7 @@ class MultiHeadedScaledDotProductAttention(nn.Module):
         v = self.wv(v).view(v.size(0), v.size(1), self.n, self.d_v).transpose(1, 2)
         attn = torch.matmul(q, k.transpose(2, 3))
         if mask is not None:
-            mask.unsqueeze(1).unsqueeze(-1)
+            mask = mask.unsqueeze(1).unsqueeze(-1)
             attn = attn.masked_fill(mask==0, -1e9)
         # actual attention
         attn = F.softmax(attn / self.temperature, dim=-1)
