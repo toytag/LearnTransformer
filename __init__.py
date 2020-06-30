@@ -1,5 +1,5 @@
 from .transformer import \
-    MultiHeadedScaledDotProductAttention, \
+    MultiHeadAttention, \
     PositionwiseFeedForward, \
     TransformerBlock, \
     EncoderLayer, \
@@ -9,6 +9,6 @@ from .transformer import \
     Decoder, \
     Transformer
 
-__all__ = [MultiHeadedScaledDotProductAttention, PositionwiseFeedForward,
+__all__ = [MultiHeadAttention, PositionwiseFeedForward,
     TransformerBlock, EncoderLayer, DecoderLayer, PositionalEncoding,
     Encoder, Decoder, Transformer]

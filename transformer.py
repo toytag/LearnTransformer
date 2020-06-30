@@ -7,35 +7,34 @@ import torch.nn.functional as F
 
 
 # multi-head scaled dot-product attention
-class MultiHeadedScaledDotProductAttention(nn.Module):
+class MultiHeadAttention(nn.Module):
     def __init__(self, n_head, d_model, d_k, d_v, dropout=0.1):
         super().__init__()
         self.n = n_head
         self.d_k = d_k
         self.d_v = d_v
         self.temperature = np.sqrt(d_k)
-        self.wq = nn.Linear(d_model, d_k * n_head)
-        self.wk = nn.Linear(d_model, d_k * n_head)
-        self.wv = nn.Linear(d_model, d_v * n_head)
-        self.output = nn.Linear(d_v * n_head, d_model)
+        self.wq = nn.Linear(d_model, n_head * d_k)
+        self.wk = nn.Linear(d_model, n_head * d_k)
+        self.wv = nn.Linear(d_model, n_head * d_v)
+        self.output = nn.Linear(n_head * d_v, d_model)
         self.dropout = nn.Dropout(p=dropout)
         self.norm = nn.LayerNorm(d_model, eps=1e-6)
 
-    def forward(self, q, k, v, residual=None, mask=None):
+    def forward(self, q, k, v, mask=None):
         # default residual connection
-        if residual is None:
-            residual = q
+        residual = q
         # [batch_size, n, (seq_length, d)]
         q = self.wq(q).view(q.size(0), q.size(1), self.n, self.d_k).transpose(1, 2)
         k = self.wk(k).view(k.size(0), k.size(1), self.n, self.d_k).transpose(1, 2)
         v = self.wv(v).view(v.size(0), v.size(1), self.n, self.d_v).transpose(1, 2)
-        attn = torch.matmul(q, k.transpose(2, 3))
+        attn = torch.matmul(q, k.transpose(2, 3)) / self.temperature
         if mask is not None:
-            mask = mask.unsqueeze(1).unsqueeze(-1)
-            attn = attn.masked_fill(mask==0, -1e9)
+            # masking columns, shape: [batch_size, 1, 1, seq_length]
+            attn = attn.masked_fill(mask[:, None, None, :]==0, -1e9)
         # actual attention
-        attn = F.softmax(attn / self.temperature, dim=-1)
-        attn_dot_v = torch.matmul(attn, v).transpose(1, 2).reshape(q.size(0), -1, self.d_v * self.n)
+        attn = F.softmax(attn, dim=-1)
+        attn_dot_v = torch.matmul(attn, v).transpose(1, 2).reshape(q.size(0), -1, self.n * self.d_v)
         output = self.output(attn_dot_v)
         output = self.dropout(output)
         output = self.norm(output + residual)
@@ -63,7 +62,7 @@ class PositionwiseFeedForward(nn.Module):
 class TransformerBlock(nn.Module):
     def __init__(self, d_model, d_hidden, n_head, d_k, d_v, dropout=0.1):
         super().__init__()
-        self.slf_attn = MultiHeadedScaledDotProductAttention(n_head, d_model, d_k, d_v, dropout=dropout)
+        self.slf_attn = MultiHeadAttention(n_head, d_model, d_k, d_v, dropout=dropout)
         self.pos_ffnn = PositionwiseFeedForward(d_model, d_hidden, dropout=dropout)
 
     def forward(self, input_seq, input_mask=None):
@@ -82,8 +81,8 @@ class EncoderLayer(TransformerBlock):
 class DecoderLayer(nn.Module):
     def __init__(self, d_model, d_hidden, n_head, d_k, d_v, dropout=0.1):
         super().__init__()
-        self.slf_attn = MultiHeadedScaledDotProductAttention(n_head, d_model, d_k, d_v, dropout=dropout)
-        self.enc_dec_attn = MultiHeadedScaledDotProductAttention(n_head, d_model, d_k, d_v, dropout=dropout)
+        self.slf_attn = MultiHeadAttention(n_head, d_model, d_k, d_v, dropout=dropout)
+        self.enc_dec_attn = MultiHeadAttention(n_head, d_model, d_k, d_v, dropout=dropout)
         self.pos_ffnn = PositionwiseFeedForward(d_model, d_hidden, dropout=dropout)
 
     def forward(self, dec_input, enc_output, slf_attn_mask=None, enc_dec_attn_mask=None):
