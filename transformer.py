@@ -34,7 +34,7 @@ class MultiHeadAttention(nn.Module):
             attn = attn.masked_fill(mask[:, None, None, :]==0, -1e9)
         # actual attention
         attn = F.softmax(attn, dim=-1)
-        attn_dot_v = torch.matmul(attn, v).transpose(1, 2).reshape(q.size(0), -1, self.n * self.d_v)
+        attn_dot_v = torch.matmul(attn, v).transpose(1, 2).contiguous().view(q.size(0), -1, self.n * self.d_v)
         output = self.output(attn_dot_v)
         output = self.dropout(output)
         output = self.norm(output + residual)
@@ -159,7 +159,7 @@ class Decoder(nn.Module):
 # transformer
 class Transformer(nn.Module):
     def __init__(self, n_src_vocab, n_trg_vocab, d_model=256, d_hidden=1024,
-                 n_head=8, d_k=64, d_v=64, n_position=100, n_layer=2, dropout=0.1,
+                 n_head=8, d_k=32, d_v=32, n_position=64, n_layer=8, dropout=0.1,
                  emb_src_trg_weight_sharing=True, trg_emb_prj_weight_sharing=True):
         super().__init__()
         self.encoder = Encoder(n_src_vocab, d_model, d_hidden, n_head, d_k, d_v,
@@ -187,7 +187,7 @@ class Transformer(nn.Module):
 
 if __name__ == "__main__":
     # test
-    model = Transformer(10, 10)
+    model = Transformer(10000, 10000)
     with torch.no_grad():
         x1, x2 = torch.tensor([[3, 8, 9, 2, 4, 2, 3]]), torch.tensor([[1, 5, 2, 7, 9, 7]])
         print(torch.argmax(F.softmax(model(x1, None, x2, None), dim=-1), dim=-1))
